@@ -60,8 +60,8 @@ struct curl_tlssessioninfo {
 The *backend* struct member is one of the defines in the CURLSSLBACKEND_*
 series: CURLSSLBACKEND_NONE (when built without TLS support),
 CURLSSLBACKEND_WOLFSSL, CURLSSLBACKEND_SECURETRANSPORT, CURLSSLBACKEND_GNUTLS,
-CURLSSLBACKEND_MBEDTLS, CURLSSLBACKEND_NSS, CURLSSLBACKEND_OPENSSL,
-CURLSSLBACKEND_SCHANNEL or CURLSSLBACKEND_MESALINK. (Note that the OpenSSL
+CURLSSLBACKEND_MBEDTLS, CURLSSLBACKEND_NSS, CURLSSLBACKEND_OPENSSL or
+CURLSSLBACKEND_SCHANNEL. (Note that the OpenSSL
 forks are all reported as just OpenSSL here.)
 
 The *internals* struct member points to a TLS library specific pointer for
@@ -94,6 +94,8 @@ as well:
 ## wolfSSL
 
 **SSL ***
+
+##
 
 If the *internals* pointer is NULL then either the SSL backend is not
 supported, an SSL session has not yet been established or the connection is no

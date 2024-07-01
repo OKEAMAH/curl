@@ -41,7 +41,7 @@ permissions: {}
 
 env:
   DEVELOPER_DIR: /Applications/Xcode.app/Contents/Developer
-  MAKEFLAGS: -j 5
+  MAKEFLAGS: -j 4
 
 jobs:
   autotools:
@@ -178,7 +178,7 @@ jobs:
           python3 -m pip install impacket
         name: 'pip3 install'
 
-      - uses: actions/checkout@a5ac7e51b41094c92402da3b24376905380afc29 # v4
+      - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4
 
       - run: rm -f $HOME/.curlrc
         name: remove $HOME/.curlrc
@@ -186,7 +186,7 @@ jobs:
       - run: autoreconf -fi
         name: 'autoreconf'
 
-      - run: ./configure --enable-warnings --enable-werror ${{ matrix.build.configure }}
+      - run: ./configure --disable-dependency-tracking --enable-warnings --enable-werror ${{ matrix.build.configure }}
         name: 'configure'
         env:
           CFLAGS: "-mmacosx-version-min=${{ matrix.build.macosx-version-min }}"
@@ -220,11 +220,14 @@ jobs:
           - CC: gcc-12
         build:
           - name: OpenSSL
-            install: nghttp2 openssl
-            generate: -DOPENSSL_ROOT_DIR=$(brew --prefix)/opt/openssl -DCMAKE_OSX_DEPLOYMENT_TARGET=10.9
+            install: nghttp2 openssl gsasl
+            generate: -DOPENSSL_ROOT_DIR=$(brew --prefix)/opt/openssl -DCMAKE_OSX_DEPLOYMENT_TARGET=10.9 -DCURL_USE_GSASL=ON
           - name: LibreSSL
             install: nghttp2 libressl
             generate: -DOPENSSL_ROOT_DIR=$(brew --prefix)/opt/libressl -DCURL_DISABLE_LDAP=ON -DCURL_DISABLE_LDAPS=ON -DBUILD_EXAMPLES=ON
+          - name: wolfSSL
+            install: nghttp2 wolfssl
+            generate: -DCURL_USE_WOLFSSL=ON -DCURL_DISABLE_LDAP=ON -DCURL_DISABLE_LDAPS=ON
           - name: libssh2
             install: nghttp2 openssl libssh2
             generate: -DOPENSSL_ROOT_DIR=$(brew --prefix)/opt/openssl -DCURL_USE_LIBSSH2=ON -DBUILD_SHARED_LIBS=ON -DBUILD_STATIC_LIBS=ON
@@ -249,7 +252,7 @@ jobs:
           esac
         name: 'brew unlink openssl'
 
-      - uses: actions/checkout@a5ac7e51b41094c92402da3b24376905380afc29 # v4
+      - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4
 
       - run: cmake -B build -DCMAKE_UNITY_BUILD=ON -DCURL_WERROR=ON -DUSE_APPLE_IDN=ON ${{ matrix.build.generate }}
         name: 'cmake generate'

@@ -77,9 +77,8 @@ class TestSSLUse:
             exp_resumed = 'Initial'  # rustls does not support sessions, TODO
         if env.curl_uses_lib('bearssl') and tls_max == '1.3':
             pytest.skip('BearSSL does not support TLSv1.3')
-        if env.curl_uses_lib('mbedtls') and tls_max == '1.3' and \
-                not env.curl_lib_version_at_least('mbedtls', '3.6.0'):
-            pytest.skip('mbedtls TLSv1.3 support requires at least 3.6.0')
+        if env.curl_uses_lib('mbedtls') and tls_max == '1.3':
+            pytest.skip('mbedtls TLSv1.3 session resume not working in 3.6.0')
 
         curl = CurlClient(env=env)
         # tell the server to close the connection after each request
@@ -105,8 +104,6 @@ class TestSSLUse:
     # use host name with trailing dot, verify handshake
     @pytest.mark.parametrize("proto", ['http/1.1', 'h2', 'h3'])
     def test_17_03_trailing_dot(self, env: Env, httpd, nghttpx, repeat, proto):
-        if env.curl_uses_lib('gnutls'):
-            pytest.skip("gnutls does not match hostnames with trailing dot")
         if proto == 'h3' and not env.have_h3():
             pytest.skip("h3 not supported")
         curl = CurlClient(env=env)
@@ -243,3 +240,20 @@ class TestSSLUse:
             assert r.json['SSL_CIPHER'] in cipher_names, f'{r.json}'
         else:
             assert r.exit_code != 0, f'{r}'
+
+    @pytest.mark.parametrize("proto", ['http/1.1', 'h2', 'h3'])
+    def test_17_08_cert_status(self, env: Env, httpd, nghttpx, repeat, proto):
+        if proto == 'h3' and not env.have_h3():
+            pytest.skip("h3 not supported")
+        if not env.curl_uses_lib('openssl') and \
+            not env.curl_uses_lib('gnutls') and \
+            not env.curl_uses_lib('quictls'):
+            pytest.skip("tls library does not support --cert-status")
+        curl = CurlClient(env=env)
+        domain = f'localhost'
+        url = f'https://{env.authority_for(domain, proto)}/'
+        r = curl.http_get(url=url, alpn_proto=proto, extra_args=[
+            '--cert-status'
+        ])
+        # CURLE_SSL_INVALIDCERTSTATUS, our certs have no OCSP info
+        assert r.exit_code == 91, f'{r}'

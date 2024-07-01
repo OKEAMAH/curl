@@ -64,15 +64,34 @@ CURLcode Curl_alpn_set_negotiated(struct Curl_cfilter *cf,
                                   const unsigned char *proto,
                                   size_t proto_len);
 
+/* enum for the nonblocking SSL connection state machine */
+typedef enum {
+  ssl_connect_1,
+  ssl_connect_2,
+  ssl_connect_3,
+  ssl_connect_done
+} ssl_connect_state;
+
+typedef enum {
+  ssl_connection_none,
+  ssl_connection_negotiating,
+  ssl_connection_complete
+} ssl_connection_state;
+
+#define CURL_SSL_IO_NEED_NONE   (0)
+#define CURL_SSL_IO_NEED_RECV   (1<<0)
+#define CURL_SSL_IO_NEED_SEND   (1<<1)
+
 /* Information in each SSL cfilter context: cf->ctx */
 struct ssl_connect_data {
-  ssl_connection_state state;
-  ssl_connect_state connecting_state;
   struct ssl_peer peer;
   const struct alpn_spec *alpn;     /* ALPN to use or NULL for none */
   void *backend;                    /* vtls backend specific props */
   struct cf_call_data call_data;    /* data handle used in current call */
   struct curltime handshake_done;   /* time when handshake finished */
+  ssl_connection_state state;
+  ssl_connect_state connecting_state;
+  int io_need;                      /* TLS signals special SEND/RECV needs */
   BIT(use_alpn);                    /* if ALPN shall be used in handshake */
   BIT(peer_closed);                 /* peer has closed connection */
 };
@@ -99,8 +118,8 @@ struct Curl_ssl {
 
   size_t (*version)(char *buffer, size_t size);
   int (*check_cxn)(struct Curl_cfilter *cf, struct Curl_easy *data);
-  int (*shut_down)(struct Curl_cfilter *cf,
-                   struct Curl_easy *data);
+  CURLcode (*shut_down)(struct Curl_cfilter *cf, struct Curl_easy *data,
+                        bool send_shutdown, bool *done);
   bool (*data_pending)(struct Curl_cfilter *cf,
                        const struct Curl_easy *data);
 
@@ -115,9 +134,8 @@ struct Curl_ssl {
                                   struct Curl_easy *data,
                                   bool *done);
 
-  /* During handshake, adjust the pollset to include the socket
-   * for POLLOUT or POLLIN as needed.
-   * Mandatory. */
+  /* During handshake/shutdown, adjust the pollset to include the socket
+   * for POLLOUT or POLLIN as needed. Mandatory. */
   void (*adjust_pollset)(struct Curl_cfilter *cf, struct Curl_easy *data,
                           struct easy_pollset *ps);
   void *(*get_internals)(struct ssl_connect_data *connssl, CURLINFO info);
@@ -147,7 +165,8 @@ extern const struct Curl_ssl *Curl_ssl;
 
 int Curl_none_init(void);
 void Curl_none_cleanup(void);
-int Curl_none_shutdown(struct Curl_cfilter *cf, struct Curl_easy *data);
+CURLcode Curl_none_shutdown(struct Curl_cfilter *cf, struct Curl_easy *data,
+                            bool send_shutdown, bool *done);
 int Curl_none_check_cxn(struct Curl_cfilter *cf, struct Curl_easy *data);
 CURLcode Curl_none_random(struct Curl_easy *data, unsigned char *entropy,
                           size_t length);

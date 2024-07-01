@@ -31,6 +31,7 @@
 #include "tool_util.h"
 #include "tool_version.h"
 #include "tool_cb_prg.h"
+#include "terminal.h"
 
 #include "memdebug.h" /* keep this as LAST include */
 
@@ -55,7 +56,7 @@ static const struct category_descriptors categories[] = {
   {"http", "HTTP and HTTPS protocol options", CURLHELP_HTTP},
   {"imap", "IMAP protocol options", CURLHELP_IMAP},
   /* important is left out because it is the default help page */
-  {"misc", "Options that don't fit into any other category", CURLHELP_MISC},
+  {"misc", "Options that do not fit into any other category", CURLHELP_MISC},
   {"output", "Filesystem output", CURLHELP_OUTPUT},
   {"pop3", "POP3 protocol options", CURLHELP_POP3},
   {"post", "HTTP Post specific options", CURLHELP_POST},
