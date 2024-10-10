@@ -68,12 +68,14 @@
 # 1591, 1943. See https://github.com/hyperium/hyper/issues/2699 for details.
 %if hyper
 266
+477
 500
 579
 587
 # 1021 re-added here due to flakiness
 1021
 1417
+1460
 1533
 1540
 1591

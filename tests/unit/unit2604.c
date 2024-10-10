@@ -23,6 +23,7 @@
  ***************************************************************************/
 #include "curlcheck.h"
 #include "curl_path.h"
+#include "memdebug.h"
 
 static CURLcode unit_setup(void)
 {
@@ -45,6 +46,11 @@ struct set {
 UNITTEST_START
 #ifdef USE_SSH
 {
+#ifdef __GNUC__
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Woverlength-strings"
+#endif
+
 /* 60 a's */
 #define SA60 "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 /* 540 a's */
@@ -71,6 +77,10 @@ UNITTEST_START
     { "foo \"", "foo", "\"", "/", CURLE_OK},
     { NULL, NULL, NULL, NULL, CURLE_OK }
   };
+
+#ifdef __GNUC__
+#pragma GCC diagnostic warning "-Woverlength-strings"
+#endif
 
   list[0].cp = calloc(1, too_long + 1);
   fail_unless(list[0].cp, "could not alloc too long value");

@@ -22,7 +22,7 @@
  *
  ***************************************************************************/
 /* <DESC>
- * HTTP/2 server push
+ * HTTP upload tests and tweaks
  * </DESC>
  */
 /* curl stuff */
@@ -38,7 +38,7 @@
 #endif
 
 #ifndef CURLPIPE_MULTIPLEX
-#error "too old libcurl, cannot do HTTP/2 server push!"
+#error "too old libcurl"
 #endif
 
 #ifndef _MSC_VER
@@ -145,9 +145,12 @@ static int debug_cb(CURL *handle, curl_infotype type,
 struct transfer {
   int idx;
   CURL *easy;
+  const char *method;
   char filename[128];
   FILE *out;
+  curl_off_t send_total;
   curl_off_t recv_size;
+  curl_off_t send_size;
   curl_off_t fail_at;
   curl_off_t pause_at;
   curl_off_t abort_at;
@@ -188,27 +191,48 @@ static size_t my_write_cb(char *buf, size_t nitems, size_t buflen,
       return 0;
   }
 
-  if(!t->resumed &&
-     t->recv_size < t->pause_at &&
-     ((t->recv_size + (curl_off_t)blen) >= t->pause_at)) {
-    fprintf(stderr, "[t-%d] PAUSE\n", t->idx);
-    t->paused = 1;
-    return CURL_WRITEFUNC_PAUSE;
-  }
-
   nwritten = fwrite(buf, nitems, buflen, t->out);
   if(nwritten < blen) {
     fprintf(stderr, "[t-%d] write failure\n", t->idx);
     return 0;
   }
   t->recv_size += (curl_off_t)nwritten;
-  if(t->fail_at > 0 && t->recv_size >= t->fail_at) {
-    fprintf(stderr, "[t-%d] FAIL by write callback at %ld bytes\n",
-            t->idx, (long)t->recv_size);
-    return CURL_WRITEFUNC_ERROR;
+  return (size_t)nwritten;
+}
+
+static size_t my_read_cb(char *buf, size_t nitems, size_t buflen,
+                         void *userdata)
+{
+  struct transfer *t = userdata;
+  size_t blen = (nitems * buflen);
+  size_t nread;
+
+  if(t->send_total <= t->send_size)
+    nread = 0;
+  else if((t->send_total - t->send_size) < (curl_off_t)blen)
+    nread = (size_t)(t->send_total - t->send_size);
+  else
+    nread = blen;
+
+  fprintf(stderr, "[t-%d] SEND %ld bytes, total=%ld, pause_at=%ld\n",
+          t->idx, (long)nread, (long)t->send_total, (long)t->pause_at);
+
+  if(!t->resumed &&
+     t->send_size < t->pause_at &&
+     ((t->send_size + (curl_off_t)blen) >= t->pause_at)) {
+    fprintf(stderr, "[t-%d] PAUSE\n", t->idx);
+    t->paused = 1;
+    return CURL_READFUNC_PAUSE;
   }
 
-  return (size_t)nwritten;
+  memset(buf, 'x', nread);
+  t->send_size += (curl_off_t)nread;
+  if(t->fail_at > 0 && t->send_size >= t->fail_at) {
+    fprintf(stderr, "[t-%d] ABORT by read callback at %ld bytes\n",
+            t->idx, (long)t->send_size);
+    return CURL_READFUNC_ABORT;
+  }
+  return (size_t)nread;
 }
 
 static int my_progress_cb(void *userdata,
@@ -217,11 +241,11 @@ static int my_progress_cb(void *userdata,
 {
   struct transfer *t = userdata;
   (void)ultotal;
-  (void)ulnow;
+  (void)dlnow;
   (void)dltotal;
-  if(t->abort_at > 0 && dlnow >= t->abort_at) {
-    fprintf(stderr, "[t-%d] ABORT by progress_cb at %ld bytes\n",
-            t->idx, (long)dlnow);
+  if(t->abort_at > 0 && ulnow >= t->abort_at) {
+    fprintf(stderr, "[t-%d] ABORT by progress_cb at %ld bytes sent\n",
+            t->idx, (long)ulnow);
     return 1;
   }
   return 0;
@@ -237,6 +261,17 @@ static int setup(CURL *hnd, const char *url, struct transfer *t,
   curl_easy_setopt(hnd, CURLOPT_BUFFERSIZE, (long)(128 * 1024));
   curl_easy_setopt(hnd, CURLOPT_WRITEFUNCTION, my_write_cb);
   curl_easy_setopt(hnd, CURLOPT_WRITEDATA, t);
+
+  if(!t->method || !strcmp("PUT", t->method))
+    curl_easy_setopt(hnd, CURLOPT_UPLOAD, 1L);
+  else if(!strcmp("POST", t->method))
+    curl_easy_setopt(hnd, CURLOPT_POST, 1L);
+  else {
+    fprintf(stderr, "unsupported method '%s'\n", t->method);
+    return 1;
+  }
+  curl_easy_setopt(hnd, CURLOPT_READFUNCTION, my_read_cb);
+  curl_easy_setopt(hnd, CURLOPT_READDATA, t);
   curl_easy_setopt(hnd, CURLOPT_NOPROGRESS, 0L);
   curl_easy_setopt(hnd, CURLOPT_XFERINFOFUNCTION, my_progress_cb);
   curl_easy_setopt(hnd, CURLOPT_XFERINFODATA, t);
@@ -262,13 +297,14 @@ static void usage(const char *msg)
     fprintf(stderr, "%s\n", msg);
   fprintf(stderr,
     "usage: [options] url\n"
-    "  download a url with following options:\n"
+    "  upload to a url with following options:\n"
     "  -a         abort paused transfer\n"
-    "  -m number  max parallel downloads\n"
-    "  -n number  total downloads\n"
-    "  -A number  abort transfer after `number` response bytes\n"
-    "  -F number  fail writing response after `number` response bytes\n"
-    "  -P number  pause transfer after `number` response bytes\n"
+    "  -m number  max parallel uploads\n"
+    "  -n number  total uploads\n"
+    "  -A number  abort transfer after `number` request body bytes\n"
+    "  -F number  fail reading request body after `number` of bytes\n"
+    "  -P number  pause transfer after `number` request body bytes\n"
+    "  -S number  size to upload\n"
     "  -V http_version (http/1.1, h2, h3) http version to use\n"
   );
 }
@@ -283,17 +319,20 @@ int main(int argc, char *argv[])
   CURLM *multi_handle;
   struct CURLMsg *m;
   const char *url;
+  const char *method = "PUT";
   size_t i, n, max_parallel = 1;
   size_t active_transfers;
   size_t pause_offset = 0;
   size_t abort_offset = 0;
   size_t fail_offset = 0;
+  size_t send_total = (128 * 1024);
   int abort_paused = 0;
+  int reuse_easy = 0;
   struct transfer *t;
   int http_version = CURL_HTTP_VERSION_2_0;
   int ch;
 
-  while((ch = getopt(argc, argv, "afhm:n:A:F:P:V:")) != -1) {
+  while((ch = getopt(argc, argv, "afhm:n:A:F:M:P:RS:V:")) != -1) {
     switch(ch) {
     case 'h':
       usage(NULL);
@@ -316,8 +355,17 @@ int main(int argc, char *argv[])
     case 'F':
       fail_offset = (size_t)strtol(optarg, NULL, 10);
       break;
+    case 'M':
+      method = optarg;
+      break;
     case 'P':
       pause_offset = (size_t)strtol(optarg, NULL, 10);
+      break;
+    case 'R':
+      reuse_easy = 1;
+      break;
+    case 'S':
+      send_total = (size_t)strtol(optarg, NULL, 10);
       break;
     case 'V': {
       if(!strcmp("http/1.1", optarg))
@@ -340,6 +388,11 @@ int main(int argc, char *argv[])
   argc -= optind;
   argv += optind;
 
+  if(max_parallel > 1 && reuse_easy) {
+    usage("cannot mix -R and -P");
+    return 2;
+  }
+
   curl_global_init(CURL_GLOBAL_DEFAULT);
   curl_global_trace("ids,time,http/2,http/3");
 
@@ -355,113 +408,142 @@ int main(int argc, char *argv[])
     return 1;
   }
 
-  multi_handle = curl_multi_init();
-  curl_multi_setopt(multi_handle, CURLMOPT_PIPELINING, CURLPIPE_MULTIPLEX);
-
   active_transfers = 0;
   for(i = 0; i < transfer_count; ++i) {
     t = &transfers[i];
     t->idx = (int)i;
+    t->method = method;
+    t->send_total = (curl_off_t)send_total;
     t->abort_at = (curl_off_t)abort_offset;
     t->fail_at = (curl_off_t)fail_offset;
     t->pause_at = (curl_off_t)pause_offset;
   }
 
-  n = (max_parallel < transfer_count)? max_parallel : transfer_count;
-  for(i = 0; i < n; ++i) {
-    t = &transfers[i];
-    t->easy = curl_easy_init();
-    if(!t->easy || setup(t->easy, url, t, http_version)) {
-      fprintf(stderr, "[t-%d] FAILED setup\n", (int)i);
+  if(reuse_easy) {
+    CURL *easy = curl_easy_init();
+    CURLcode rc = CURLE_OK;
+    if(!easy) {
+      fprintf(stderr, "failed to init easy handle\n");
       return 1;
     }
-    curl_multi_add_handle(multi_handle, t->easy);
-    t->started = 1;
-    ++active_transfers;
-    fprintf(stderr, "[t-%d] STARTED\n", t->idx);
+    for(i = 0; i < transfer_count; ++i) {
+      t = &transfers[i];
+      t->easy = easy;
+      if(setup(t->easy, url, t, http_version)) {
+        fprintf(stderr, "[t-%d] FAILED setup\n", (int)i);
+        return 1;
+      }
+
+      fprintf(stderr, "[t-%d] STARTING\n", t->idx);
+      rc = curl_easy_perform(easy);
+      fprintf(stderr, "[t-%d] DONE -> %d\n", t->idx, rc);
+      t->easy = NULL;
+      curl_easy_reset(easy);
+    }
+    curl_easy_cleanup(easy);
   }
+  else {
+    multi_handle = curl_multi_init();
+    curl_multi_setopt(multi_handle, CURLMOPT_PIPELINING, CURLPIPE_MULTIPLEX);
 
-  do {
-    int still_running; /* keep number of running handles */
-    CURLMcode mc = curl_multi_perform(multi_handle, &still_running);
-
-    if(still_running) {
-      /* wait for activity, timeout or "nothing" */
-      mc = curl_multi_poll(multi_handle, NULL, 0, 1000, NULL);
+    n = (max_parallel < transfer_count) ? max_parallel : transfer_count;
+    for(i = 0; i < n; ++i) {
+      t = &transfers[i];
+      t->easy = curl_easy_init();
+      if(!t->easy || setup(t->easy, url, t, http_version)) {
+        fprintf(stderr, "[t-%d] FAILED setup\n", (int)i);
+        return 1;
+      }
+      curl_multi_add_handle(multi_handle, t->easy);
+      t->started = 1;
+      ++active_transfers;
+      fprintf(stderr, "[t-%d] STARTED\n", t->idx);
     }
 
-    if(mc)
-      break;
-
     do {
-      int msgq = 0;
-      m = curl_multi_info_read(multi_handle, &msgq);
-      if(m && (m->msg == CURLMSG_DONE)) {
-        CURL *e = m->easy_handle;
-        --active_transfers;
-        curl_multi_remove_handle(multi_handle, e);
-        t = get_transfer_for_easy(e);
-        if(t) {
-          t->done = 1;
-          fprintf(stderr, "[t-%d] FINISHED\n", t->idx);
+      int still_running; /* keep number of running handles */
+      CURLMcode mc = curl_multi_perform(multi_handle, &still_running);
+
+      if(still_running) {
+        /* wait for activity, timeout or "nothing" */
+        mc = curl_multi_poll(multi_handle, NULL, 0, 1000, NULL);
+      }
+
+      if(mc)
+        break;
+
+      do {
+        int msgq = 0;
+        m = curl_multi_info_read(multi_handle, &msgq);
+        if(m && (m->msg == CURLMSG_DONE)) {
+          CURL *e = m->easy_handle;
+          --active_transfers;
+          curl_multi_remove_handle(multi_handle, e);
+          t = get_transfer_for_easy(e);
+          if(t) {
+            t->done = 1;
+            fprintf(stderr, "[t-%d] FINISHED\n", t->idx);
+          }
+          else {
+            curl_easy_cleanup(e);
+            fprintf(stderr, "unknown FINISHED???\n");
+          }
+        }
+
+
+        /* nothing happening, maintenance */
+        if(abort_paused) {
+          /* abort paused transfers */
+          for(i = 0; i < transfer_count; ++i) {
+            t = &transfers[i];
+            if(!t->done && t->paused && t->easy) {
+              curl_multi_remove_handle(multi_handle, t->easy);
+              t->done = 1;
+              active_transfers--;
+              fprintf(stderr, "[t-%d] ABORTED\n", t->idx);
+            }
+          }
         }
         else {
-          curl_easy_cleanup(e);
-          fprintf(stderr, "unknown FINISHED???\n");
-        }
-      }
-
-
-      /* nothing happening, maintenance */
-      if(abort_paused) {
-        /* abort paused transfers */
-        for(i = 0; i < transfer_count; ++i) {
-          t = &transfers[i];
-          if(!t->done && t->paused && t->easy) {
-            curl_multi_remove_handle(multi_handle, t->easy);
-            t->done = 1;
-            active_transfers--;
-            fprintf(stderr, "[t-%d] ABORTED\n", t->idx);
-          }
-        }
-      }
-      else {
-        /* resume one paused transfer */
-        for(i = 0; i < transfer_count; ++i) {
-          t = &transfers[i];
-          if(!t->done && t->paused) {
-            t->resumed = 1;
-            t->paused = 0;
-            curl_easy_pause(t->easy, CURLPAUSE_CONT);
-            fprintf(stderr, "[t-%d] RESUMED\n", t->idx);
-            break;
-          }
-        }
-      }
-
-      while(active_transfers < max_parallel) {
-        for(i = 0; i < transfer_count; ++i) {
-          t = &transfers[i];
-          if(!t->started) {
-            t->easy = curl_easy_init();
-            if(!t->easy || setup(t->easy, url, t, http_version)) {
-              fprintf(stderr, "[t-%d] FAILED setup\n", (int)i);
-              return 1;
+          /* resume one paused transfer */
+          for(i = 0; i < transfer_count; ++i) {
+            t = &transfers[i];
+            if(!t->done && t->paused) {
+              t->resumed = 1;
+              t->paused = 0;
+              curl_easy_pause(t->easy, CURLPAUSE_CONT);
+              fprintf(stderr, "[t-%d] RESUMED\n", t->idx);
+              break;
             }
-            curl_multi_add_handle(multi_handle, t->easy);
-            t->started = 1;
-            ++active_transfers;
-            fprintf(stderr, "[t-%d] STARTED\n", t->idx);
-            break;
           }
         }
-        /* all started */
-        if(i == transfer_count)
-          break;
-      }
-    } while(m);
 
-  } while(active_transfers); /* as long as we have transfers going */
+        while(active_transfers < max_parallel) {
+          for(i = 0; i < transfer_count; ++i) {
+            t = &transfers[i];
+            if(!t->started) {
+              t->easy = curl_easy_init();
+              if(!t->easy || setup(t->easy, url, t, http_version)) {
+                fprintf(stderr, "[t-%d] FAILED setup\n", (int)i);
+                return 1;
+              }
+              curl_multi_add_handle(multi_handle, t->easy);
+              t->started = 1;
+              ++active_transfers;
+              fprintf(stderr, "[t-%d] STARTED\n", t->idx);
+              break;
+            }
+          }
+          /* all started */
+          if(i == transfer_count)
+            break;
+        }
+      } while(m);
+
+    } while(active_transfers); /* as long as we have transfers going */
+
+    curl_multi_cleanup(multi_handle);
+  }
 
   for(i = 0; i < transfer_count; ++i) {
     t = &transfers[i];
@@ -475,8 +557,6 @@ int main(int argc, char *argv[])
     }
   }
   free(transfers);
-
-  curl_multi_cleanup(multi_handle);
 
   return 0;
 #else

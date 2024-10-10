@@ -77,7 +77,7 @@ test435 test436 test437 test438 test439 test440 test441 test442 test443 \
 test444 test445 test446 test447 test448 test449 test450 test451 test452 \
 test453 test454 test455 test456 test457 test458 test459 test460 test461 \
 test462 test463 test467 test468 test469 test470 test471 test472 test473 \
-test474 test475 test476 \
+test474 test475 test476 test477 \
 \
 test490 test491 test492 test493 test494 test495 test496 test497 test498 \
 test499 test500 test501 test502 test503 test504 test505 test506 test507 \
@@ -101,13 +101,15 @@ test652 test653 test654 test655 test656 test658 test659 test660 test661 \
 test662 test663 test664 test665 test666 test667 test668 test669 test670 \
 test671 test672 test673 test674 test675 test676 test677 test678 test679 \
 test680 test681 test682 test683 test684 test685 test686 test687 test688 \
-test689 test690 test691 \
+test689 test690 test691 test692 \
 \
 test700 test701 test702 test703 test704 test705 test706 test707 test708 \
 test709 test710 test711 test712 test713 test714 test715 test716 test717 \
 test718 test719 test720 test721 test722 test723 test724 test725 test726 \
 test727 test728 test729 test730 test731 test732 test733 test734 test735 \
 test736 test737 test738 test739 test740 test741 test742 \
+\
+test780 test781 test782 test783 \
 \
 test799 test800 test801 test802 test803 test804 test805 test806 test807 \
 test808 test809 test810 test811 test812 test813 test814 test815 test816 \
@@ -193,7 +195,7 @@ test1455 test1456 test1457 test1458 test1459 test1460 test1461 test1462 \
 test1463 test1464 test1465 test1466 test1467 test1468 test1469 test1470 \
 test1471 test1472 test1473 test1474 test1475 test1476 test1477 test1478 \
 test1479 test1480 test1481 test1482 test1483 test1484 test1485 test1486 \
-test1487 test1488 test1489 \
+test1487 test1488 test1489 test1490 test1491 test1492 \
 \
 test1500 test1501 test1502 test1503 test1504 test1505 test1506 test1507 \
 test1508 test1509 test1510 test1511 test1512 test1513 test1514 test1515 \
@@ -264,10 +266,10 @@ test2600 test2601 test2602 test2603 test2604 \
 test3000 test3001 test3002 test3003 test3004 test3005 test3006 test3007 \
 test3008 test3009 test3010 test3011 test3012 test3013 test3014 test3015 \
 test3016 test3017 test3018 test3019 test3020 test3021 test3022 test3023 \
-test3024 test3025 test3026 test3027 test3028 test3029 test3030 \
+test3024 test3025 test3026 test3027 test3028 test3029 test3030 test3031 \
 \
 test3100 test3101 test3102 test3103 \
 test3200 \
-test3201 test3202 test3203 test3204 test3205
+test3201 test3202 test3203 test3204 test3205 test3207
 
 EXTRA_DIST = $(TESTCASES) DISABLED

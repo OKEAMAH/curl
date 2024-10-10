@@ -121,17 +121,18 @@ replaced by their content at that time.
 
 Available substitute variables include:
 
-- `%CLIENT6IP` - IPv6 address of the client running curl
+- `%CLIENT6IP` - IPv6 address of the client running curl (including brackets)
+- `%CLIENT6IP-NB` - IPv6 address of the client running curl (no brackets)
 - `%CLIENTIP` - IPv4 address of the client running curl
 - `%CURL` - Path to the curl executable
 - `%DATE` - current YYYY-MM-DD date
+- `%DEV_NULL` - Null device (e.g. /dev/null)
 - `%FILE_PWD` - Current directory, on Windows prefixed with a slash
 - `%FTP6PORT` - IPv6 port number of the FTP server
 - `%FTPPORT` - Port number of the FTP server
 - `%FTPSPORT` - Port number of the FTPS server
 - `%FTPTIME2` - Timeout in seconds that should be just sufficient to receive a
   response from the test FTP server
-- `%FTPTIME3` - Even longer than `%FTPTIME2`
 - `%GOPHER6PORT` - IPv6 port number of the Gopher server
 - `%GOPHERPORT` - Port number of the Gopher server
 - `%GOPHERSPORT` - Port number of the Gophers server
@@ -340,6 +341,8 @@ issue.
 - `RETRSIZE [size]` - Force RETR response to contain the specified size
 - `NOSAVE` - Do not actually save what is received
 - `SLOWDOWN` - Send FTP responses with 0.01 sec delay between each byte
+- `SLOWDOWNDATA` - Send FTP responses with 0.01 sec delay between each data
+  byte
 - `PASVBADIP` - makes PASV send back an illegal IP in its 227 response
 - `CAPA [capabilities]` - Enables support for and specifies a list of space
    separated capabilities to return to the client for the IMAP `CAPABILITY`,
@@ -429,6 +432,7 @@ Features testable here are:
 - `brotli`
 - `c-ares`
 - `CharConv`
+- `codeset-utf8`. If the running codeset is UTF-8 capable.
 - `cookies`
 - `crypto`
 - `Debug`
@@ -454,6 +458,7 @@ Features testable here are:
 - `libssh`
 - `oldlibssh` (versions before 0.9.4)
 - `libz`
+- `local-http`. The HTTP server runs on 127.0.0.1
 - `manual`
 - `mbedtls`
 - `Mime`
@@ -507,10 +512,6 @@ A command line that if set gets run by the test script before the test. If an
 output is displayed by the command or if the return code is non-zero, the test
 is skipped and the (single-line) output is displayed as reason for not running
 the test.
-
-### `<postcheck>`
-A command line that if set gets run by the test script after the test. If the
-command exists with a non-zero status code, the test is considered failed.
 
 ### `<tool>`
 Name of tool to invoke instead of "curl". This tool must be built and exist
@@ -620,6 +621,14 @@ changing protocol data such as port numbers or user-agent strings.
 One perl op per line that operates on the protocol dump. This is pretty
 advanced. Example: `s/^EPRT .*/EPRT stripped/`.
 
+### `<postcheck>`
+A command line that if set gets run by the test script after the test. If the
+command exists with a non-zero status code, the test is considered failed.
+
+### `<notexists>`
+A list of directory entries that are checked for after the test has completed
+and that must not exist. A listed entry existing causes the test to fail.
+
 ### `<protocol [nonewline="yes"][crlf="yes"]>`
 
 the protocol dump curl should transmit, if `nonewline` is set, we cut off the
@@ -692,11 +701,14 @@ content
 
 ### `<stripfile4>`
 
-### `<upload [crlf="yes"]>`
+### `<upload [crlf="yes"] [nonewline="yes"]>`
 the contents of the upload data curl should have sent
 
 `crlf=yes` forces *upload* newlines to become CRLF even if not written so in
 the source file.
+
+`nonewline=yes` means that the last byte (the trailing newline character)
+should be cut off from the upload data before comparing it.
 
 ### `<valgrind>`
 disable - disables the valgrind log check for this test

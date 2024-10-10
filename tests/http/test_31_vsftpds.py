@@ -37,7 +37,7 @@ from testenv import Env, CurlClient, VsFTPD
 log = logging.getLogger(__name__)
 
 
-@pytest.mark.skipif(condition=not Env.has_vsftpd(), reason=f"missing vsftpd")
+@pytest.mark.skipif(condition=not Env.has_vsftpd(), reason="missing vsftpd")
 class TestVsFTPD:
 
     SUPPORTS_SSL = True
@@ -154,7 +154,7 @@ class TestVsFTPD:
         r.check_stats(count=count, http_status=226)
         # vsftp closes control connection without niceties,
         # disregard RST packets it sent from its port to curl
-        assert len(r.tcpdump.stats_excluding(src_port=env.ftps_port)) == 0, f'Unexpected TCP RSTs packets'
+        assert len(r.tcpdump.stats_excluding(src_port=env.ftps_port)) == 0, 'Unexpected TCP RSTs packets'
 
     # check with `tcpdump` if curl causes any TCP RST packets
     @pytest.mark.skipif(condition=not Env.tcpdump(), reason="tcpdump not available")
@@ -170,7 +170,7 @@ class TestVsFTPD:
         r.check_stats(count=count, http_status=226)
         # vsftp closes control connection without niceties,
         # disregard RST packets it sent from its port to curl
-        assert len(r.tcpdump.stats_excluding(src_port=env.ftps_port)) == 0, f'Unexpected TCP RSTs packets'
+        assert len(r.tcpdump.stats_excluding(src_port=env.ftps_port)) == 0, 'Unexpected TCP RSTs packets'
 
     def test_31_08_upload_ascii(self, env: Env, vsftpds: VsFTPD):
         docname = 'upload-ascii'
@@ -193,6 +193,49 @@ class TestVsFTPD:
         assert (srcsize + newlines) == dstsize, \
             f'expected source with {newlines} lines to be that much larger,'\
             f'instead srcsize={srcsize}, upload size={dstsize}, diff={dstsize-srcsize}'
+
+    def test_31_08_active_download(self, env: Env, vsftpds: VsFTPD):
+        docname = 'data-10k'
+        curl = CurlClient(env=env)
+        srcfile = os.path.join(vsftpds.docs_dir, f'{docname}')
+        count = 1
+        url = f'ftp://{env.ftp_domain}:{vsftpds.port}/{docname}?[0-{count-1}]'
+        r = curl.ftp_ssl_get(urls=[url], with_stats=True, extra_args=[
+            '--ftp-port', '127.0.0.1'
+        ])
+        r.check_stats(count=count, http_status=226)
+        self.check_downloads(curl, srcfile, count)
+
+    def test_31_09_active_upload(self, env: Env, vsftpds: VsFTPD):
+        docname = 'upload-1k'
+        curl = CurlClient(env=env)
+        srcfile = os.path.join(env.gen_dir, docname)
+        dstfile = os.path.join(vsftpds.docs_dir, docname)
+        self._rmf(dstfile)
+        count = 1
+        url = f'ftp://{env.ftp_domain}:{vsftpds.port}/'
+        r = curl.ftp_ssl_upload(urls=[url], fupload=f'{srcfile}', with_stats=True, extra_args=[
+            '--ftp-port', '127.0.0.1'
+        ])
+        r.check_stats(count=count, http_status=226)
+        self.check_upload(env, vsftpds, docname=docname)
+
+    @pytest.mark.parametrize("indata", [
+        '1234567890', ''
+    ])
+    def test_31_10_upload_stdin(self, env: Env, vsftpds: VsFTPD, indata):
+        curl = CurlClient(env=env)
+        docname = "upload_31_10"
+        dstfile = os.path.join(vsftpds.docs_dir, docname)
+        self._rmf(dstfile)
+        count = 1
+        url = f'ftp://{env.ftp_domain}:{vsftpds.port}/{docname}'
+        r = curl.ftp_ssl_upload(urls=[url], updata=indata, with_stats=True)
+        r.check_stats(count=count, http_status=226)
+        assert os.path.exists(dstfile)
+        destdata = open(dstfile).readlines()
+        expdata = [indata] if len(indata) else []
+        assert expdata == destdata, f'exected: {expdata}, got: {destdata}'
 
     def check_downloads(self, client, srcfile: str, count: int,
                         complete: bool = True):

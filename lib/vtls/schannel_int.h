@@ -28,8 +28,10 @@
 
 #ifdef USE_SCHANNEL
 
+#include "vtls.h"
+
 #if (defined(__MINGW32__) || defined(CERT_CHAIN_REVOCATION_CHECK_CHAIN)) \
-  && !defined(CURL_WINDOWS_APP)
+  && !defined(CURL_WINDOWS_UWP)
 #define HAS_MANUAL_VERIFY_API
 #endif
 
@@ -165,7 +167,7 @@ struct schannel_ssl_backend_data {
 #define MPROTO_SCHANNEL_CERT_SHARE_KEY   "tls:schannel:cert:share"
 
 struct schannel_cert_share {
-  unsigned char *CAinfo_blob_digest; /* CA info blob digest */
+  unsigned char CAinfo_blob_digest[CURL_SHA256_DIGEST_LENGTH];
   size_t CAinfo_blob_size;           /* CA info blob size */
   char *CAfile;                      /* CAfile path used to generate
                                         certificate store */

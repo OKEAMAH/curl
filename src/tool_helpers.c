@@ -67,8 +67,6 @@ const char *param2text(ParameterError error)
     return "too large number";
   case PARAM_NO_NOT_BOOLEAN:
     return "used '--no-' for option that is not a boolean";
-  case PARAM_CONTDISP_SHOW_HEADER:
-    return "showing headers and --remote-header-name cannot be combined";
   case PARAM_CONTDISP_RESUME_FROM:
     return "--continue-at and --remote-header-name cannot be combined";
   case PARAM_READ_ERROR:
@@ -94,7 +92,7 @@ int SetHTTPrequest(struct OperationConfig *config, HttpReq req, HttpReq *store)
     "PUT (-T, --upload-file)"
   };
 
-  if((*store == HTTPREQ_UNSPEC) ||
+  if((*store == TOOL_HTTPREQ_UNSPEC) ||
      (*store == req)) {
     *store = req;
     return 0;

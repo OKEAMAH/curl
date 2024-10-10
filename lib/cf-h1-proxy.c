@@ -489,8 +489,7 @@ static CURLcode recv_CONNECT_resp(struct Curl_cfilter *cf,
         ts->keepon = KEEPON_IGNORE;
 
         if(ts->cl) {
-          infof(data, "Ignore %" CURL_FORMAT_CURL_OFF_T
-                " bytes of response-body", ts->cl);
+          infof(data, "Ignore %" FMT_OFF_T " bytes of response-body", ts->cl);
         }
         else if(ts->chunked_encoding) {
           infof(data, "Ignore chunked response-body");
@@ -548,8 +547,8 @@ static CURLcode CONNECT_host(struct Curl_cfilter *cf,
   if(result)
     return result;
 
-  authority = aprintf("%s%s%s:%d", ipv6_ip?"[":"", hostname, ipv6_ip?"]":"",
-                      port);
+  authority = aprintf("%s%s%s:%d", ipv6_ip ? "[":"", hostname,
+                      ipv6_ip ? "]" : "", port);
   if(!authority)
     return CURLE_OUT_OF_MEMORY;
 

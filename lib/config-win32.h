@@ -155,6 +155,9 @@
 /* Define if you have the setmode function. */
 #define HAVE_SETMODE 1
 
+/* Define if you have the _setmode function. */
+#define HAVE__SETMODE 1
+
 /* Define if you have the socket function. */
 #define HAVE_SOCKET 1
 
@@ -475,7 +478,7 @@ Vista
 #endif
 
 /* Define to use the Windows crypto library. */
-#if !defined(CURL_WINDOWS_APP)
+#if !defined(CURL_WINDOWS_UWP)
 #define USE_WIN32_CRYPTO
 #endif
 

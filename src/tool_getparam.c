@@ -171,7 +171,9 @@ static const struct LongShort aliases[]= {
   {"insecure",                   ARG_BOOL, 'k', C_INSECURE},
   {"interface",                  ARG_STRG, ' ', C_INTERFACE},
   {"ip-tos",                     ARG_STRG, ' ', C_IP_TOS},
+#ifndef CURL_DISABLE_IPFS
   {"ipfs-gateway",               ARG_STRG, ' ', C_IPFS_GATEWAY},
+#endif /* !CURL_DISABLE_IPFS */
   {"ipv4",                       ARG_NONE, '4', C_IPV4},
   {"ipv6",                       ARG_NONE, '6', C_IPV6},
   {"json",                       ARG_STRG, ' ', C_JSON},
@@ -388,7 +390,7 @@ void parse_cert_parameter(const char *cert_parameter,
   param_place = cert_parameter;
   while(*param_place) {
     span = strcspn(param_place, ":\\");
-    strncpy(certname_place, param_place, span);
+    memcpy(certname_place, param_place, span);
     param_place += span;
     certname_place += span;
     /* we just ate all the non-special chars. now we are on either a special
@@ -942,7 +944,7 @@ static ParameterError set_rate(struct GlobalConfig *global,
   if(numlen > sizeof(number) -1)
     return PARAM_NUMBER_TOO_LARGE;
 
-  strncpy(number, nextarg, numlen);
+  memcpy(number, nextarg, numlen);
   number[numlen] = 0;
   err = str2unum(&denominator, number);
   if(err)
@@ -1216,7 +1218,7 @@ ParameterError getparameter(const char *flag, /* f or -long-flag */
       config->disallow_username_in_url = toggle;
       break;
     case C_EPSV: /* --epsv */
-      config->disable_epsv = (!toggle)?TRUE:FALSE;
+      config->disable_epsv = (!toggle) ? TRUE : FALSE;
       break;
     case C_DNS_SERVERS: /* --dns-servers */
       if(!curlinfo->ares_num) /* c-ares is needed for this */
@@ -1246,7 +1248,7 @@ ParameterError getparameter(const char *flag, /* f or -long-flag */
       }
       break;
     case C_ALPN: /* --alpn */
-      config->noalpn = (!toggle)?TRUE:FALSE;
+      config->noalpn = (!toggle) ? TRUE : FALSE;
       break;
     case C_LIMIT_RATE: /* --limit-rate */
       err = GetSizeParameter(global, nextarg, "rate", &value);
@@ -1321,9 +1323,11 @@ ParameterError getparameter(const char *flag, /* f or -long-flag */
       if(!err && (config->maxredirs < -1))
         err = PARAM_BAD_NUMERIC;
       break;
+#ifndef CURL_DISABLE_IPFS
     case C_IPFS_GATEWAY: /* --ipfs-gateway */
       err = getstr(&config->ipfs_gateway, nextarg, DENY_BLANK);
       break;
+#endif /* !CURL_DISABLE_IPFS */
     case C_PROXY_NTLM: /* --proxy-ntlm */
       if(!feature_ntlm)
         err = PARAM_LIBCURL_DOESNT_SUPPORT;
@@ -1367,7 +1371,7 @@ ParameterError getparameter(const char *flag, /* f or -long-flag */
       config->disable_eprt = toggle;
       break;
     case C_EPRT: /* --eprt */
-      config->disable_eprt = (!toggle)?TRUE:FALSE;
+      config->disable_eprt = (!toggle) ? TRUE : FALSE;
       break;
     case C_XATTR: /* --xattr */
       config->xattr = toggle;
@@ -1548,7 +1552,7 @@ ParameterError getparameter(const char *flag, /* f or -long-flag */
       config->ftp_ssl_reqd = toggle;
       break;
     case C_SESSIONID: /* --sessionid */
-      config->disable_sessionid = (!toggle)?TRUE:FALSE;
+      config->disable_sessionid = (!toggle) ? TRUE : FALSE;
       break;
     case C_FTP_SSL_CONTROL: /* --ftp-ssl-control */
       if(toggle && !feature_ssl)
@@ -1578,7 +1582,7 @@ ParameterError getparameter(const char *flag, /* f or -long-flag */
       config->raw = toggle;
       break;
     case C_KEEPALIVE: /* --keepalive */
-      config->nokeepalive = (!toggle)?TRUE:FALSE;
+      config->nokeepalive = (!toggle) ? TRUE : FALSE;
       break;
     case C_KEEPALIVE_TIME: /* --keepalive-time */
       err = str2unum(&config->alivetime, nextarg);
@@ -2163,9 +2167,9 @@ ParameterError getparameter(const char *flag, /* f or -long-flag */
                    nextarg,
                    &config->mimeroot,
                    &config->mimecurrent,
-                   (cmd == C_FORM_STRING)?TRUE:FALSE)) /* literal string */
+                   (cmd == C_FORM_STRING) ? TRUE : FALSE)) /* literal string */
         err = PARAM_BAD_USE;
-      else if(SetHTTPrequest(config, HTTPREQ_MIMEPOST, &config->httpreq))
+      else if(SetHTTPrequest(config, TOOL_HTTPREQ_MIMEPOST, &config->httpreq))
         err = PARAM_BAD_USE;
       break;
     case C_GLOBOFF: /* --globoff */
@@ -2198,7 +2202,7 @@ ParameterError getparameter(const char *flag, /* f or -long-flag */
         char *string;
         size_t len;
         bool use_stdin = !strcmp(&nextarg[1], "-");
-        FILE *file = use_stdin?stdin:fopen(&nextarg[1], FOPEN_READTEXT);
+        FILE *file = use_stdin ? stdin : fopen(&nextarg[1], FOPEN_READTEXT);
         if(!file) {
           errorf(global, "Failed to open %s", &nextarg[1]);
           err = PARAM_READ_ERROR;
@@ -2242,9 +2246,8 @@ ParameterError getparameter(const char *flag, /* f or -long-flag */
     case C_HEAD: /* --head */
       config->no_body = toggle;
       config->show_headers = toggle;
-      if(SetHTTPrequest(config,
-                        (config->no_body)?HTTPREQ_HEAD:HTTPREQ_GET,
-                        &config->httpreq))
+      if(SetHTTPrequest(config, (config->no_body) ? TOOL_HTTPREQ_HEAD :
+                        TOOL_HTTPREQ_GET, &config->httpreq))
         err = PARAM_BAD_USE;
       break;
     case C_REMOTE_HEADER_NAME: /* --remote-header-name */
@@ -2303,7 +2306,7 @@ ParameterError getparameter(const char *flag, /* f or -long-flag */
       config->nobuffer = longopt ? !toggle : TRUE;
       break;
     case C_REMOTE_NAME_ALL: /* --remote-name-all */
-      config->default_node_flags = toggle?GETOUT_USEREMOTE:0;
+      config->default_node_flags = toggle ? GETOUT_USEREMOTE : 0;
       break;
     case C_OUTPUT_DIR: /* --output-dir */
       err = getstr(&config->output_dir, nextarg, DENY_BLANK);
@@ -2760,9 +2763,7 @@ ParameterError parse_args(struct GlobalConfig *global, int argc,
   }
 
   if(!result && config->content_disposition) {
-    if(config->show_headers)
-      result = PARAM_CONTDISP_SHOW_HEADER;
-    else if(config->resume_from_current)
+    if(config->resume_from_current)
       result = PARAM_CONTDISP_RESUME_FROM;
   }
 

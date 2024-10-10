@@ -223,7 +223,7 @@ static ssize_t Curl_xfer_recv_resp(struct Curl_easy *data,
       blen = (size_t)totalleft;
   }
   else if(xfer_recv_shutdown_started(data)) {
-    /* we already reveived everything. Do not try more. */
+    /* we already received everything. Do not try more. */
     blen = 0;
   }
 
@@ -424,53 +424,37 @@ CURLcode Curl_sendrecv(struct Curl_easy *data, struct curltime *nowp)
   struct SingleRequest *k = &data->req;
   CURLcode result = CURLE_OK;
   int didwhat = 0;
-  int select_bits = 0;
 
   DEBUGASSERT(nowp);
   if(data->state.select_bits) {
     if(select_bits_paused(data, data->state.select_bits)) {
       /* leave the bits unchanged, so they'll tell us what to do when
        * this transfer gets unpaused. */
-      /* DEBUGF(infof(data, "sendrecv, select_bits, early return on PAUSED"));
-      */
       result = CURLE_OK;
       goto out;
     }
     data->state.select_bits = 0;
-    /* DEBUGF(infof(data, "sendrecv, select_bits %x, RUN", select_bits)); */
-    select_bits = (CURL_CSELECT_OUT|CURL_CSELECT_IN);
-  }
-  else if(data->last_poll.num) {
-    /* The transfer wanted something polled. Let's run all available
-     * send/receives. Worst case we EAGAIN on some. */
-    /* DEBUGF(infof(data, "sendrecv, had poll sockets, RUN")); */
-    select_bits = (CURL_CSELECT_OUT|CURL_CSELECT_IN);
-  }
-  else if(data->req.keepon & KEEP_SEND_TIMED) {
-    /* DEBUGF(infof(data, "sendrecv, KEEP_SEND_TIMED, RUN ul")); */
-    select_bits = CURL_CSELECT_OUT;
   }
 
 #ifdef USE_HYPER
   if(data->conn->datastream) {
-    result = data->conn->datastream(data, data->conn, &didwhat, select_bits);
+    result = data->conn->datastream(data, data->conn, &didwhat,
+                                    CURL_CSELECT_OUT|CURL_CSELECT_IN);
     if(result || data->req.done)
       goto out;
   }
   else {
 #endif
-  /* We go ahead and do a read if we have a readable socket or if
-     the stream was rewound (in which case we have data in a
-     buffer) */
-  if((k->keepon & KEEP_RECV) && (select_bits & CURL_CSELECT_IN)) {
+  /* We go ahead and do a read if we have a readable socket or if the stream
+     was rewound (in which case we have data in a buffer) */
+  if(k->keepon & KEEP_RECV) {
     result = sendrecv_dl(data, k, &didwhat);
     if(result || data->req.done)
       goto out;
   }
 
   /* If we still have writing to do, we check if we have a writable socket. */
-  if((Curl_req_want_send(data) || (data->req.keepon & KEEP_SEND_TIMED)) &&
-     (select_bits & CURL_CSELECT_OUT)) {
+  if(Curl_req_want_send(data) || (data->req.keepon & KEEP_SEND_TIMED)) {
     result = sendrecv_ul(data, &didwhat);
     if(result)
       goto out;
@@ -479,7 +463,7 @@ CURLcode Curl_sendrecv(struct Curl_easy *data, struct curltime *nowp)
   }
 #endif
 
-  if(select_bits && !didwhat) {
+  if(!didwhat) {
     /* Transfer wanted to send/recv, but nothing was possible. */
     result = Curl_conn_ev_data_idle(data);
     if(result)
@@ -496,15 +480,15 @@ CURLcode Curl_sendrecv(struct Curl_easy *data, struct curltime *nowp)
   if(k->keepon) {
     if(0 > Curl_timeleft(data, nowp, FALSE)) {
       if(k->size != -1) {
-        failf(data, "Operation timed out after %" CURL_FORMAT_TIMEDIFF_T
-              " milliseconds with %" CURL_FORMAT_CURL_OFF_T " out of %"
-              CURL_FORMAT_CURL_OFF_T " bytes received",
+        failf(data, "Operation timed out after %" FMT_TIMEDIFF_T
+              " milliseconds with %" FMT_OFF_T " out of %"
+              FMT_OFF_T " bytes received",
               Curl_timediff(*nowp, data->progress.t_startsingle),
               k->bytecount, k->size);
       }
       else {
-        failf(data, "Operation timed out after %" CURL_FORMAT_TIMEDIFF_T
-              " milliseconds with %" CURL_FORMAT_CURL_OFF_T " bytes received",
+        failf(data, "Operation timed out after %" FMT_TIMEDIFF_T
+              " milliseconds with %" FMT_OFF_T " bytes received",
               Curl_timediff(*nowp, data->progress.t_startsingle),
               k->bytecount);
       }
@@ -519,7 +503,7 @@ CURLcode Curl_sendrecv(struct Curl_easy *data, struct curltime *nowp)
      */
     if(!(data->req.no_body) && (k->size != -1) &&
        (k->bytecount != k->size) && !k->newurl) {
-      failf(data, "transfer closed with %" CURL_FORMAT_CURL_OFF_T
+      failf(data, "transfer closed with %" FMT_OFF_T
             " bytes remaining to read", k->size - k->bytecount);
       result = CURLE_PARTIAL_FILE;
       goto out;
@@ -983,7 +967,7 @@ CURLcode Curl_follow(struct Curl_easy *data,
         !(data->set.keep_post & CURL_REDIR_POST_303))) {
       data->state.httpreq = HTTPREQ_GET;
       infof(data, "Switch to %s",
-            data->req.no_body?"HEAD":"GET");
+            data->req.no_body ? "HEAD" : "GET");
     }
     break;
   case 304: /* Not Modified */
@@ -1085,8 +1069,10 @@ static void xfer_setup(
   bool getheader,           /* TRUE if header parsing is wanted */
   int writesockindex,       /* socket index to write to, it may very well be
                                the same we read from. -1 disables */
-  bool shutdown             /* shutdown connection at transfer end. Only
+  bool shutdown,            /* shutdown connection at transfer end. Only
                              * supported when sending OR receiving. */
+  bool shutdown_err_ignore  /* errors during shutdown do not fail the
+                             * transfer */
   )
 {
   struct SingleRequest *k = &data->req;
@@ -1112,12 +1098,13 @@ static void xfer_setup(
     conn->sockfd = sockindex == -1 ?
       CURL_SOCKET_BAD : conn->sock[sockindex];
     conn->writesockfd = writesockindex == -1 ?
-      CURL_SOCKET_BAD:conn->sock[writesockindex];
+      CURL_SOCKET_BAD : conn->sock[writesockindex];
   }
 
   k->getheader = getheader;
   k->size = size;
   k->shutdown = shutdown;
+  k->shutdown_err_ignore = shutdown_err_ignore;
 
   /* The code sequence below is placed in this function just because all
      necessary input is not always known in do_complete() as this function may
@@ -1142,7 +1129,7 @@ static void xfer_setup(
 
 void Curl_xfer_setup_nop(struct Curl_easy *data)
 {
-  xfer_setup(data, -1, -1, FALSE, -1, FALSE);
+  xfer_setup(data, -1, -1, FALSE, -1, FALSE, FALSE);
 }
 
 void Curl_xfer_setup1(struct Curl_easy *data,
@@ -1150,21 +1137,23 @@ void Curl_xfer_setup1(struct Curl_easy *data,
                       curl_off_t recv_size,
                       bool getheader)
 {
-  int recv_index = (send_recv & CURL_XFER_RECV)? FIRSTSOCKET : -1;
-  int send_index = (send_recv & CURL_XFER_SEND)? FIRSTSOCKET : -1;
+  int recv_index = (send_recv & CURL_XFER_RECV) ? FIRSTSOCKET : -1;
+  int send_index = (send_recv & CURL_XFER_SEND) ? FIRSTSOCKET : -1;
   DEBUGASSERT((recv_index >= 0) || (recv_size == -1));
-  xfer_setup(data, recv_index, recv_size, getheader, send_index, FALSE);
+  xfer_setup(data, recv_index, recv_size, getheader, send_index, FALSE, FALSE);
 }
 
 void Curl_xfer_setup2(struct Curl_easy *data,
                       int send_recv,
                       curl_off_t recv_size,
-                      bool shutdown)
+                      bool shutdown,
+                      bool shutdown_err_ignore)
 {
-  int recv_index = (send_recv & CURL_XFER_RECV)? SECONDARYSOCKET : -1;
-  int send_index = (send_recv & CURL_XFER_SEND)? SECONDARYSOCKET : -1;
+  int recv_index = (send_recv & CURL_XFER_RECV) ? SECONDARYSOCKET : -1;
+  int send_index = (send_recv & CURL_XFER_SEND) ? SECONDARYSOCKET : -1;
   DEBUGASSERT((recv_index >= 0) || (recv_size == -1));
-  xfer_setup(data, recv_index, recv_size, FALSE, send_index, shutdown);
+  xfer_setup(data, recv_index, recv_size, FALSE, send_index,
+             shutdown, shutdown_err_ignore);
 }
 
 CURLcode Curl_xfer_write_resp(struct Curl_easy *data,
@@ -1253,8 +1242,8 @@ CURLcode Curl_xfer_send(struct Curl_easy *data,
   else if(!result && *pnwritten)
     data->info.request_size += *pnwritten;
 
-  DEBUGF(infof(data, "Curl_xfer_send(len=%zu) -> %d, %zu",
-               blen, result, *pnwritten));
+  DEBUGF(infof(data, "Curl_xfer_send(len=%zu, eos=%d) -> %d, %zu",
+               blen, eos, result, *pnwritten));
   return result;
 }
 

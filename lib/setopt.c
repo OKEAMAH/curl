@@ -193,7 +193,7 @@ static CURLcode protocol2num(const char *str, curl_prot_t *val)
     size_t tlen;
 
     str = strchr(str, ',');
-    tlen = str? (size_t) (str - token): strlen(token);
+    tlen = str ? (size_t) (str - token) : strlen(token);
     if(tlen) {
       const struct Curl_handler *h = Curl_getn_scheme_handler(token, tlen);
 
@@ -207,6 +207,52 @@ static CURLcode protocol2num(const char *str, curl_prot_t *val)
   if(!*val)
     /* no protocol listed */
     return CURLE_BAD_FUNCTION_ARGUMENT;
+  return CURLE_OK;
+}
+
+static CURLcode httpauth(struct Curl_easy *data, bool proxy, va_list param)
+{
+  unsigned long auth = va_arg(param, unsigned long);
+
+  if(auth != CURLAUTH_NONE) {
+    int bitcheck = 0;
+    bool authbits = FALSE;
+    /* the DIGEST_IE bit is only used to set a special marker, for all the
+       rest we need to handle it as normal DIGEST */
+    bool iestyle = !!(auth & CURLAUTH_DIGEST_IE);
+    if(proxy)
+      data->state.authproxy.iestyle = iestyle;
+    else
+      data->state.authhost.iestyle = iestyle;
+
+    if(auth & CURLAUTH_DIGEST_IE) {
+      auth |= CURLAUTH_DIGEST; /* set standard digest bit */
+      auth &= ~CURLAUTH_DIGEST_IE; /* unset ie digest bit */
+    }
+
+    /* switch off bits we cannot support */
+#ifndef USE_NTLM
+    auth &= ~CURLAUTH_NTLM;    /* no NTLM support */
+#endif
+#ifndef USE_SPNEGO
+    auth &= ~CURLAUTH_NEGOTIATE; /* no Negotiate (SPNEGO) auth without GSS-API
+                                    or SSPI */
+#endif
+
+    /* check if any auth bit lower than CURLAUTH_ONLY is still set */
+    while(bitcheck < 31) {
+      if(auth & (1UL << bitcheck++)) {
+        authbits = TRUE;
+        break;
+      }
+    }
+    if(!authbits)
+      return CURLE_NOT_BUILT_IN; /* no supported types left! */
+  }
+  if(proxy)
+    data->set.proxyauth = auth;
+  else
+    data->set.httpauth = auth;
   return CURLE_OK;
 }
 
@@ -1029,52 +1075,7 @@ CURLcode Curl_vsetopt(struct Curl_easy *data, CURLoption option, va_list param)
 #endif
 
   case CURLOPT_HTTPAUTH:
-    /*
-     * Set HTTP Authentication type BITMASK.
-     */
-  {
-    int bitcheck;
-    bool authbits;
-    unsigned long auth = va_arg(param, unsigned long);
-
-    if(auth == CURLAUTH_NONE) {
-      data->set.httpauth = auth;
-      break;
-    }
-
-    /* the DIGEST_IE bit is only used to set a special marker, for all the
-       rest we need to handle it as normal DIGEST */
-    data->state.authhost.iestyle = !!(auth & CURLAUTH_DIGEST_IE);
-
-    if(auth & CURLAUTH_DIGEST_IE) {
-      auth |= CURLAUTH_DIGEST; /* set standard digest bit */
-      auth &= ~CURLAUTH_DIGEST_IE; /* unset ie digest bit */
-    }
-
-    /* switch off bits we cannot support */
-#ifndef USE_NTLM
-    auth &= ~CURLAUTH_NTLM;    /* no NTLM support */
-#endif
-#ifndef USE_SPNEGO
-    auth &= ~CURLAUTH_NEGOTIATE; /* no Negotiate (SPNEGO) auth without
-                                    GSS-API or SSPI */
-#endif
-
-    /* check if any auth bit lower than CURLAUTH_ONLY is still set */
-    bitcheck = 0;
-    authbits = FALSE;
-    while(bitcheck < 31) {
-      if(auth & (1UL << bitcheck++)) {
-        authbits = TRUE;
-        break;
-      }
-    }
-    if(!authbits)
-      return CURLE_NOT_BUILT_IN; /* no supported types left! */
-
-    data->set.httpauth = auth;
-  }
-  break;
+    return httpauth(data, FALSE, param);
 
   case CURLOPT_CUSTOMREQUEST:
     /*
@@ -1108,51 +1109,7 @@ CURLcode Curl_vsetopt(struct Curl_easy *data, CURLoption option, va_list param)
     break;
 
   case CURLOPT_PROXYAUTH:
-    /*
-     * Set HTTP Authentication type BITMASK.
-     */
-  {
-    int bitcheck;
-    bool authbits;
-    unsigned long auth = va_arg(param, unsigned long);
-
-    if(auth == CURLAUTH_NONE) {
-      data->set.proxyauth = auth;
-      break;
-    }
-
-    /* the DIGEST_IE bit is only used to set a special marker, for all the
-       rest we need to handle it as normal DIGEST */
-    data->state.authproxy.iestyle = !!(auth & CURLAUTH_DIGEST_IE);
-
-    if(auth & CURLAUTH_DIGEST_IE) {
-      auth |= CURLAUTH_DIGEST; /* set standard digest bit */
-      auth &= ~CURLAUTH_DIGEST_IE; /* unset ie digest bit */
-    }
-    /* switch off bits we cannot support */
-#ifndef USE_NTLM
-    auth &= ~CURLAUTH_NTLM;    /* no NTLM support */
-#endif
-#ifndef USE_SPNEGO
-    auth &= ~CURLAUTH_NEGOTIATE; /* no Negotiate (SPNEGO) auth without
-                                    GSS-API or SSPI */
-#endif
-
-    /* check if any auth bit lower than CURLAUTH_ONLY is still set */
-    bitcheck = 0;
-    authbits = FALSE;
-    while(bitcheck < 31) {
-      if(auth & (1UL << bitcheck++)) {
-        authbits = TRUE;
-        break;
-      }
-    }
-    if(!authbits)
-      return CURLE_NOT_BUILT_IN; /* no supported types left! */
-
-    data->set.proxyauth = auth;
-  }
-  break;
+    return httpauth(data, TRUE, param);
 
   case CURLOPT_PROXY:
     /*
@@ -1977,7 +1934,7 @@ CURLcode Curl_vsetopt(struct Curl_easy *data, CURLoption option, va_list param)
      * Enable peer SSL verifying for proxy.
      */
     data->set.proxy_ssl.primary.verifypeer =
-      (0 != va_arg(param, long))?TRUE:FALSE;
+      (0 != va_arg(param, long));
 
     /* Update the current connection proxy_ssl_config. */
     Curl_ssl_conn_config_update(data, TRUE);
@@ -2016,7 +1973,7 @@ CURLcode Curl_vsetopt(struct Curl_easy *data, CURLoption option, va_list param)
     arg = va_arg(param, long);
 
     /* Treat both 1 and 2 as TRUE */
-    data->set.proxy_ssl.primary.verifyhost = (bool)((arg & 3)?TRUE:FALSE);
+    data->set.proxy_ssl.primary.verifyhost = !!(arg & 3);
     /* Update the current connection proxy_ssl_config. */
     Curl_ssl_conn_config_update(data, TRUE);
     break;
@@ -2319,7 +2276,7 @@ CURLcode Curl_vsetopt(struct Curl_easy *data, CURLoption option, va_list param)
 #endif
 #ifdef USE_LIBPSL
       if(data->psl == &data->share->psl)
-        data->psl = data->multi? &data->multi->psl: NULL;
+        data->psl = data->multi ? &data->multi->psl : NULL;
 #endif
 
       data->share->dirty--;
@@ -2337,7 +2294,7 @@ CURLcode Curl_vsetopt(struct Curl_easy *data, CURLoption option, va_list param)
 
       data->share->dirty++;
 
-      if(data->share->specifier & (1<< CURL_LOCK_DATA_DNS)) {
+      if(data->share->specifier & (1 << CURL_LOCK_DATA_DNS)) {
         /* use shared host cache */
         data->dns.hostcache = &data->share->hostcache;
         data->dns.hostcachetype = HCACHE_SHARED;
@@ -2622,7 +2579,7 @@ CURLcode Curl_vsetopt(struct Curl_easy *data, CURLoption option, va_list param)
     break;
 
   case CURLOPT_SSH_COMPRESSION:
-    data->set.ssh_compression = (0 != va_arg(param, long))?TRUE:FALSE;
+    data->set.ssh_compression = (0 != va_arg(param, long));
     break;
 #endif /* USE_SSH */
 
@@ -2986,7 +2943,7 @@ CURLcode Curl_vsetopt(struct Curl_easy *data, CURLoption option, va_list param)
   case CURLOPT_TCP_FASTOPEN:
 #if defined(CONNECT_DATA_IDEMPOTENT) || defined(MSG_FASTOPEN) || \
    defined(TCP_FASTOPEN_CONNECT)
-    data->set.tcp_fastopen = (0 != va_arg(param, long))?TRUE:FALSE;
+    data->set.tcp_fastopen = (0 != va_arg(param, long));
 #else
     result = CURLE_NOT_BUILT_IN;
 #endif
@@ -3038,7 +2995,7 @@ CURLcode Curl_vsetopt(struct Curl_easy *data, CURLoption option, va_list param)
     data->set.connect_to = va_arg(param, struct curl_slist *);
     break;
   case CURLOPT_SUPPRESS_CONNECT_HEADERS:
-    data->set.suppress_connect_headers = (0 != va_arg(param, long))?TRUE:FALSE;
+    data->set.suppress_connect_headers = (0 != va_arg(param, long));
     break;
   case CURLOPT_HAPPY_EYEBALLS_TIMEOUT_MS:
     uarg = va_arg(param, unsigned long);
@@ -3058,7 +3015,7 @@ CURLcode Curl_vsetopt(struct Curl_easy *data, CURLoption option, va_list param)
   case CURLOPT_DOH_URL:
     result = Curl_setstropt(&data->set.str[STRING_DOH],
                             va_arg(param, char *));
-    data->set.doh = data->set.str[STRING_DOH]?TRUE:FALSE;
+    data->set.doh = !!(data->set.str[STRING_DOH]);
     break;
 #endif
   case CURLOPT_UPKEEP_INTERVAL_MS:
@@ -3184,7 +3141,7 @@ CURLcode Curl_vsetopt(struct Curl_easy *data, CURLoption option, va_list param)
   case CURLOPT_PREREQDATA:
     data->set.prereq_userp = va_arg(param, void *);
     break;
-#ifdef USE_WEBSOCKETS
+#ifndef CURL_DISABLE_WEBSOCKETS
   case CURLOPT_WS_OPTIONS: {
     bool raw;
     arg = va_arg(param, long);
@@ -3205,22 +3162,21 @@ CURLcode Curl_vsetopt(struct Curl_easy *data, CURLoption option, va_list param)
     plen = strlen(argptr);
     if(plen > CURL_MAX_INPUT_LENGTH) {
       data->set.tls_ech = CURLECH_DISABLE;
-      result = CURLE_BAD_FUNCTION_ARGUMENT;
-      return result;
+      return CURLE_BAD_FUNCTION_ARGUMENT;
     }
     /* set tls_ech flag value, preserving CLA_CFG bit */
-    if(plen == 5 && !strcmp(argptr, "false"))
-      data->set.tls_ech = CURLECH_DISABLE
-                          | (data->set.tls_ech & CURLECH_CLA_CFG);
-    else if(plen == 6 && !strcmp(argptr, "grease"))
-      data->set.tls_ech = CURLECH_GREASE
-                          | (data->set.tls_ech & CURLECH_CLA_CFG);
-    else if(plen == 4 && !strcmp(argptr, "true"))
-      data->set.tls_ech = CURLECH_ENABLE
-                          | (data->set.tls_ech & CURLECH_CLA_CFG);
-    else if(plen == 4 && !strcmp(argptr, "hard"))
-      data->set.tls_ech = CURLECH_HARD
-                          | (data->set.tls_ech & CURLECH_CLA_CFG);
+    if(!strcmp(argptr, "false"))
+      data->set.tls_ech = CURLECH_DISABLE |
+        (data->set.tls_ech & CURLECH_CLA_CFG);
+    else if(!strcmp(argptr, "grease"))
+      data->set.tls_ech = CURLECH_GREASE |
+        (data->set.tls_ech & CURLECH_CLA_CFG);
+    else if(!strcmp(argptr, "true"))
+      data->set.tls_ech = CURLECH_ENABLE |
+        (data->set.tls_ech & CURLECH_CLA_CFG);
+    else if(!strcmp(argptr, "hard"))
+      data->set.tls_ech = CURLECH_HARD |
+        (data->set.tls_ech & CURLECH_CLA_CFG);
     else if(plen > 5 && !strncmp(argptr, "ecl:", 4)) {
       result = Curl_setstropt(&data->set.str[STRING_ECH_CONFIG], argptr + 4);
       if(result)
@@ -3236,7 +3192,7 @@ CURLcode Curl_vsetopt(struct Curl_easy *data, CURLoption option, va_list param)
   }
 #endif
   case CURLOPT_QUICK_EXIT:
-    data->set.quick_exit = (0 != va_arg(param, long)) ? 1L:0L;
+    data->set.quick_exit = (0 != va_arg(param, long)) ? 1L : 0L;
     break;
   default:
     /* unknown tag and its companion, just ignore: */

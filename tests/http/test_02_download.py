@@ -301,14 +301,14 @@ class TestDownload:
         # setting smaller frame sizes. This is not released yet, we
         # test if it works and back out if not.
         httpd.set_extra_config(env.domain1, lines=[
-            f'H2MaxDataFrameLen 1024',
+            'H2MaxDataFrameLen 1024',
         ])
         assert httpd.stop()
         if not httpd.start():
             # no, not supported, bail out
             httpd.set_extra_config(env.domain1, lines=None)
             assert httpd.start()
-            pytest.skip(f'H2MaxDataFrameLen not supported')
+            pytest.skip('H2MaxDataFrameLen not supported')
         # ok, make 100 downloads with 2 parallel running and they
         # are expected to stumble into the issue when using `lib/http2.c`
         # from curl 7.88.0
@@ -335,7 +335,7 @@ class TestDownload:
         count = 2
         docname = 'data-10m'
         url = f'https://localhost:{env.https_port}/{docname}'
-        client = LocalClient(name='h2-download', env=env)
+        client = LocalClient(name='hx-download', env=env)
         if not client.exists():
             pytest.skip(f'example client not built: {client.name}')
         r = client.run(args=[
@@ -355,7 +355,7 @@ class TestDownload:
         max_parallel = 5
         docname = 'data-10m'
         url = f'https://localhost:{env.https_port}/{docname}'
-        client = LocalClient(name='h2-download', env=env)
+        client = LocalClient(name='hx-download', env=env)
         if not client.exists():
             pytest.skip(f'example client not built: {client.name}')
         r = client.run(args=[
@@ -383,7 +383,7 @@ class TestDownload:
             pause_offset = 12 * 1024
         docname = 'data-1m'
         url = f'https://localhost:{env.https_port}/{docname}'
-        client = LocalClient(name='h2-download', env=env)
+        client = LocalClient(name='hx-download', env=env)
         if not client.exists():
             pytest.skip(f'example client not built: {client.name}')
         r = client.run(args=[
@@ -412,7 +412,7 @@ class TestDownload:
             abort_offset = 12 * 1024
         docname = 'data-1m'
         url = f'https://localhost:{env.https_port}/{docname}'
-        client = LocalClient(name='h2-download', env=env)
+        client = LocalClient(name='hx-download', env=env)
         if not client.exists():
             pytest.skip(f'example client not built: {client.name}')
         r = client.run(args=[
@@ -441,7 +441,7 @@ class TestDownload:
             fail_offset = 12 * 1024
         docname = 'data-1m'
         url = f'https://localhost:{env.https_port}/{docname}'
-        client = LocalClient(name='h2-download', env=env)
+        client = LocalClient(name='hx-download', env=env)
         if not client.exists():
             pytest.skip(f'example client not built: {client.name}')
         r = client.run(args=[
@@ -558,7 +558,7 @@ class TestDownload:
         count = 2
         docname = 'data-10m'
         url = f'https://localhost:{env.https_port}/{docname}'
-        client = LocalClient(name='h2-download', env=env)
+        client = LocalClient(name='hx-download', env=env)
         if not client.exists():
             pytest.skip(f'example client not built: {client.name}')
         r = client.run(args=[
